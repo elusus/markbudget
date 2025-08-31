@@ -1,0 +1,21 @@
+# Node
+node_modules/
+.next/
+out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+*.env
+infra/.env
+
+# Alembic
+api/alembic/*
+!api/alembic/versions/

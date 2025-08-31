@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+html, body, #__next { height: 100%; }
+
+body { @apply bg-panel text-gray-900; }
+
+/* Scrollbar subtle styling */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.15); border-radius: 5px; }
+
+.sidebar-link { @apply flex items-center gap-2 px-3 py-2 rounded-md text-white/90 hover:bg-sidebarLight transition; }
+.sidebar-section-title { @apply uppercase text-xs tracking-wide text-white/70 px-3 mt-4 mb-2; }
+.account-item { @apply flex justify-between px-3 py-1 text-white/90 hover:bg-sidebarLight rounded; }
