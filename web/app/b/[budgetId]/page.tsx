@@ -113,6 +113,9 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
       setRespA(a);
       setRespB(b);
       setAccts(await acctRes.json());
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("categories:refresh", { detail: { budgetId } }));
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load");
     } finally {

@@ -144,8 +144,28 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetId, accountId, sinceParam]);
 
-  const cats = catsResp?.categories || [];
-  const groups = catsResp?.groups || [];
+  useEffect(() => {
+    const handler = (e: any) => {
+      if (e.detail?.budgetId === budgetId) load();
+    };
+    window.addEventListener("categories:refresh", handler);
+    return () => window.removeEventListener("categories:refresh", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetId]);
+  const cats = useMemo(() => {
+    const map = new Map<string, Category>();
+    (catsResp?.categories || []).forEach((c) => {
+      if (!map.has(c.id)) map.set(c.id, c);
+    });
+    return Array.from(map.values());
+  }, [catsResp]);
+  const groups = useMemo(() => {
+    const map = new Map<string, Group>();
+    (catsResp?.groups || []).forEach((g) => {
+      if (!map.has(g.id)) map.set(g.id, g);
+    });
+    return Array.from(map.values());
+  }, [catsResp]);
   const catName = (id?: string | null) => cats.find((c) => c.id === id)?.name || (id ? "(unknown)" : "");
   const acctName = (id?: string | null) => allAccounts.find((a) => a.id === id)?.name || "";
   const payeeNames = Array.from(new Set(txs.map(t => t.payee_name).filter(Boolean))) as string[];
