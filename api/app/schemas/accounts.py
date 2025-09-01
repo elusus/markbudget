@@ -11,6 +11,8 @@ class AccountCreate(BaseModel):
 class AccountPatch(BaseModel):
     name: constr(min_length=1, max_length=200) | None = None
     on_budget: bool | None = None
+    type: constr(min_length=2, max_length=32) | None = None
+    note: str | None = None
 
 
 class AccountOut(BaseModel):
@@ -19,4 +21,4 @@ class AccountOut(BaseModel):
     name: str
     type: str
     on_budget: bool
-
+    note: str | None = None

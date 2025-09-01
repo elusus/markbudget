@@ -65,3 +65,12 @@ class MoveBetweenCategoriesRequest(BaseModel):
     from_category_id: UUID
     to_category_id: UUID
     amount_cents: int
+
+
+class CategoryPatch(BaseModel):
+    name: constr(min_length=1, max_length=200) | None = None
+    hidden: bool | None = None
+
+
+class CategoryGroupPatch(BaseModel):
+    name: constr(min_length=1, max_length=200) | None = None

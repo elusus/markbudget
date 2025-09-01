@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -21,15 +22,35 @@ type Tx = {
 type Category = { id: string; group_id: string; name: string };
 type Group = { id: string; name: string };
 type MonthResp = { month: string; groups: Group[]; categories: Category[]; months: any[] };
-type Account = { id: string; name: string };
+type Account = { id: string; name: string; type: string; on_budget: boolean; note?: string | null };
 
 function fmtMoney(cents: number) {
   const v = (cents || 0) / 100;
   return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Local date helpers (avoid UTC shift from toISOString)
+function localDateStr(d: Date = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function monthNameFromDateStr(s: string, offset = 0) {
+  const [y, m, day] = s.split("-").map((x) => parseInt(x, 10));
+  const dt = new Date(y || 1970, (m || 1) - 1, day || 1);
+  dt.setMonth(dt.getMonth() + offset);
+  return dt.toLocaleString(undefined, { month: "long" });
+}
+function fmtLocalDate(s: string) {
+  const [y, m, d] = s.split("-").map((x) => parseInt(x, 10));
+  const dt = new Date(y || 1970, (m || 1) - 1, d || 1);
+  return dt.toLocaleDateString();
+}
+
 export default function RegisterPage({ params }: { params: { budgetId: string; accountId: string } }) {
   const { budgetId, accountId } = params;
+  const router = useRouter();
   const [txs, setTxs] = useState<Tx[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +62,7 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
 
   // Add form state (bottom bar)
   const [showAdd, setShowAdd] = useState(false);
-  const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateStr, setDateStr] = useState(() => localDateStr());
   const [payeeName, setPayeeName] = useState("");
   const [outflow, setOutflow] = useState<string>("");
   const [inflow, setInflow] = useState<string>("");
@@ -56,6 +77,22 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
   const [payees, setPayees] = useState<{id: string; name: string}[]>([]);
   const [payeeOpen, setPayeeOpen] = useState(false);
   const payeeInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit Account modal state
+  const [showEdit, setShowEdit] = useState(false);
+  const currentAccount = useMemo(() => allAccounts.find(a => a.id === accountId), [allAccounts, accountId]);
+  const [editName, setEditName] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editType, setEditType] = useState("checking");
+  const [editOnBudget, setEditOnBudget] = useState(true);
+  useEffect(() => {
+    if (showEdit && currentAccount) {
+      setEditName(currentAccount.name);
+      setEditNote(currentAccount.note || "");
+      setEditType(currentAccount.type);
+      setEditOnBudget(currentAccount.on_budget);
+    }
+  }, [showEdit, currentAccount]);
 
   const sinceParam = useMemo(() => {
     const d = new Date();
@@ -107,8 +144,28 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetId, accountId, sinceParam]);
 
-  const cats = catsResp?.categories || [];
-  const groups = catsResp?.groups || [];
+  useEffect(() => {
+    const handler = (e: any) => {
+      if (e.detail?.budgetId === budgetId) load();
+    };
+    window.addEventListener("categories:refresh", handler);
+    return () => window.removeEventListener("categories:refresh", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetId]);
+  const cats = useMemo(() => {
+    const map = new Map<string, Category>();
+    (catsResp?.categories || []).forEach((c) => {
+      if (!map.has(c.id)) map.set(c.id, c);
+    });
+    return Array.from(map.values());
+  }, [catsResp]);
+  const groups = useMemo(() => {
+    const map = new Map<string, Group>();
+    (catsResp?.groups || []).forEach((g) => {
+      if (!map.has(g.id)) map.set(g.id, g);
+    });
+    return Array.from(map.values());
+  }, [catsResp]);
   const catName = (id?: string | null) => cats.find((c) => c.id === id)?.name || (id ? "(unknown)" : "");
   const acctName = (id?: string | null) => allAccounts.find((a) => a.id === id)?.name || "";
   const payeeNames = Array.from(new Set(txs.map(t => t.payee_name).filter(Boolean))) as string[];
@@ -184,9 +241,10 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
     }
     // Income targeting
     if (categoryId && categoryId.startsWith('income:')) {
-      const d = new Date(dateStr);
-      if (categoryId.endsWith('next')) d.setMonth(d.getMonth()+1);
-      body.income_for_month = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+      const [y, m, day] = dateStr.split('-').map((x) => parseInt(x, 10));
+      const d = new Date(y || 1970, (m || 1) - 1, day || 1);
+      if (categoryId.endsWith('next')) d.setMonth(d.getMonth() + 1);
+      body.income_for_month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     }
     const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions`, {
       method: "POST",
@@ -243,7 +301,20 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
       const infl = parseFloat(editFields.inflow || "0");
       const amount_cents = Math.round(infl * 100) - Math.round(out * 100);
       if (amount_cents !== t.amount_cents) body.amount_cents = amount_cents;
-      if (editFields.category_id !== undefined) body.category_id = editFields.category_id || null;
+      if (editFields.category_id !== undefined) {
+        const v = String(editFields.category_id || "");
+        if (v.startsWith('income:')) {
+          const s = String(editFields.date || t.date);
+          const [yy, mm, dd] = s.split('-').map((x)=>parseInt(x,10));
+          const d = new Date(yy || 1970, (mm || 1)-1, dd || 1);
+          if (v.endsWith('next')) d.setMonth(d.getMonth()+1);
+          body.income_for_month = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+          body.category_id = null; // ensure no category when income targeted
+        } else {
+          body.category_id = editFields.category_id || null;
+          if (editFields.category_id) body.income_for_month = null; // explicit switch from income to category
+        }
+      }
     }
     await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions/${t.id}`, {
       method: "PATCH",
@@ -276,6 +347,7 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
             <option value="lastmonth">Last month</option>
           </select>
         </div>
+        <button className="px-3 py-1.5 rounded border bg-gray-100 mr-2" onClick={() => setShowEdit(true)}>Edit Account</button>
         <input className="px-3 py-1.5 rounded border bg-white" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
@@ -325,6 +397,11 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                       <td className="px-2 py-1">
                         <select className="border rounded px-1" value={editFields.category_id} onChange={(e)=>setEditFields({...editFields, category_id:e.target.value})} disabled={isTransfer}>
                           <option value="">(none)</option>
+                          {/* Income shortcuts for edit */}
+                          <optgroup label="Income">
+                            <option value={`income:current`}>{`Income for ${monthNameFromDateStr(editFields.date || t.date, 0)}`}</option>
+                            <option value={`income:next`}>{`Income for ${monthNameFromDateStr(editFields.date || t.date, 1)}`}</option>
+                          </optgroup>
                           {groups.map((g) => (
                             <optgroup key={g.id} label={g.name}>
                               {cats.filter(c=>c.group_id===g.id).map(c=> (
@@ -350,7 +427,7 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                     <td className="text-center">
                       <button className={`w-4 h-4 rounded-full ${isCleared ? 'bg-green-500' : 'bg-gray-300'}`} onClick={() => toggleCleared(t)} title={isCleared ? 'Cleared' : 'Uncleared'} />
                     </td>
-                    <td className="px-2 py-1">{new Date(t.date).toLocaleDateString()}</td>
+                    <td className="px-2 py-1">{fmtLocalDate(t.date)}</td>
                     <td className="px-2 py-1">{isTransfer ? `Transfer: ${acctName(t.transfer_account_id as string)}` : (t.payee_name || '')}</td>
                     <td className="px-2 py-1">{catLabel}</td>
                     <td className="px-2 py-1">{t.memo || ""}</td>
@@ -463,8 +540,8 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                 <option value="">(none)</option>
                 {/* Income shortcuts */}
                 <optgroup label="Income">
-                  <option value={`income:current`}>{`Income for ${new Date(dateStr).toLocaleString(undefined,{month:'long'})}`}</option>
-                  <option value={`income:next`}>{`Income for ${(() => { const d=new Date(dateStr); d.setMonth(d.getMonth()+1); return d.toLocaleString(undefined,{month:'long'}); })()}`}</option>
+                  <option value={`income:current`}>{`Income for ${monthNameFromDateStr(dateStr, 0)}`}</option>
+                  <option value={`income:next`}>{`Income for ${monthNameFromDateStr(dateStr, 1)}`}</option>
                 </optgroup>
                 {groups.map((g) => (
                   <optgroup key={g.id} label={g.name}>
@@ -491,6 +568,67 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
               <button className="px-3 py-2 rounded border" onClick={() => { setShowAdd(false); setTransferMode(false); }}>Cancel</button>
               <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={() => { (createTx as any).keepOpenFlag = false; createTx(); }}>Save</button>
               <button className="px-3 py-2 rounded bg-blue-600/80 text-white" onClick={() => { (createTx as any).keepOpenFlag = true; createTx(); }}>Save and add another</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEdit && currentAccount && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>{ if (e.target===e.currentTarget) setShowEdit(false); }}>
+          <div className="bg-white rounded-md shadow-2xl w-full max-w-lg">
+            <div className="px-4 py-3 bg-gray-100 border-b text-lg font-semibold">Edit Account</div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm text-gray-600">Name:</label>
+                <input className="mt-1 w-full border rounded px-3 py-2" value={editName} onChange={(e)=>setEditName(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600">Note:</label>
+                <textarea className="mt-1 w-full border rounded px-3 py-2" rows={3} value={editNote} onChange={(e)=>setEditNote(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600">Type:</label>
+                <select className="mt-1 w-full border rounded px-3 py-2" value={editType} onChange={(e)=>setEditType(e.target.value)}>
+                  <option value="checking">Checking</option>
+                  <option value="savings">Savings</option>
+                  <option value="credit">Credit Card</option>
+                  <option value="cash">Cash</option>
+                  <option value="asset">Other Asset</option>
+                  <option value="liability">Other Loan/Liability</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <input id="onb" type="checkbox" checked={editOnBudget} onChange={(e)=>setEditOnBudget(e.target.checked)} />
+                <label htmlFor="onb" className="text-sm">Budget Account</label>
+              </div>
+              <div className="flex gap-2 justify-between items-center pt-2 border-t">
+                <button className="text-red-600" onClick={async ()=>{
+                  if (!confirm(`Delete account "${currentAccount.name}"? This removes all its transactions.`)) return;
+                  const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/accounts/${accountId}`, { method: 'DELETE' });
+                  if (!res.ok) { alert('Delete failed'); return; }
+                  setShowEdit(false);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('accounts:refresh', { detail: { budgetId } }));
+                  }
+                  router.push(`/b/${budgetId}/accounts`);
+                }}>Delete Account</button>
+                <div className="ml-auto flex gap-2">
+                  <button className="px-3 py-2 rounded border" onClick={()=>setShowEdit(false)}>Cancel</button>
+                  <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={async ()=>{
+                    const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/accounts/${accountId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name: editName, type: editType, on_budget: editOnBudget, note: editNote })
+                    });
+                    if (!res.ok) { alert('Update failed'); return; }
+                    setShowEdit(false);
+                    await load();
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('accounts:refresh', { detail: { budgetId } }));
+                    }
+                  }}>Done</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

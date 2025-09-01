@@ -40,6 +40,10 @@ def update_account(budget_id: UUID, account_id: UUID, payload: AccountPatch, db:
         acc.name = payload.name
     if payload.on_budget is not None:
         acc.on_budget = payload.on_budget
+    if payload.type is not None:
+        acc.type = payload.type
+    if payload.note is not None:
+        acc.note = payload.note
     db.commit()
     db.refresh(acc)
     return acc
@@ -91,9 +95,20 @@ def list_accounts_with_balances(budget_id: UUID, db: Session = Depends(get_db)):
             "type": r.type,
             "on_budget": r.on_budget,
             "current_balance_cents": int(getattr(r, "current_balance_cents", 0) or 0),
+            "note": None,
         }
         for r in rows
     ]
+
+
+@router.delete("/{account_id}", status_code=204)
+def delete_account(budget_id: UUID, account_id: UUID, db: Session = Depends(get_db)):
+    acc = db.get(Account, account_id)
+    if not acc or acc.budget_id != budget_id:
+        raise HTTPException(404, "Account not found")
+    db.delete(acc)
+    db.commit()
+    return
 
 
 @router.post("/{account_id}/reconcile", response_model=ReconcileResponse)

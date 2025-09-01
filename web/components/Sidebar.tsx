@@ -106,7 +106,8 @@ export default function Sidebar({ budgetId }: { budgetId: string }) {
       const acc: Account = await res.json();
 
       // Starting balance transaction if non-zero
-      const cents = Math.round((parseFloat(balance) || 0) * 100);
+      let cents = Math.round((parseFloat(balance) || 0) * 100);
+      if (apiType === 'credit' && cents > 0) cents = -cents;
       if (cents !== 0) {
         const txRes = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions`, {
           method: "POST",

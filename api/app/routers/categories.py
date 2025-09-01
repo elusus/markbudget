@@ -21,6 +21,8 @@ from app.schemas.categories import (
     AssignRequest,
     MoveMonthRequest,
     MoveBetweenCategoriesRequest,
+    CategoryPatch,
+    CategoryGroupPatch,
 )
 
 
@@ -41,6 +43,30 @@ def create_group(budget_id: UUID, payload: CategoryGroupCreate, db: Session = De
     return {"id": str(g.id), "name": g.name, "sort": g.sort}
 
 
+@router.patch("/budgets/{budget_id}/category-groups/{group_id}", response_model=dict)
+def patch_group(budget_id: UUID, group_id: UUID, payload: CategoryGroupPatch, db: Session = Depends(get_db)):
+    _ = db.get(Budget, budget_id) or (_ for _ in ()).throw(HTTPException(404, "Budget not found"))
+    g = db.get(CategoryGroup, group_id)
+    if not g or g.budget_id != budget_id:
+        raise HTTPException(404, "Category group not found")
+    if payload.name is not None:
+        g.name = payload.name
+    db.commit()
+    db.refresh(g)
+    return {"id": str(g.id), "name": g.name, "sort": g.sort}
+
+
+@router.delete("/budgets/{budget_id}/category-groups/{group_id}", status_code=204)
+def delete_group(budget_id: UUID, group_id: UUID, db: Session = Depends(get_db)):
+    _ = db.get(Budget, budget_id) or (_ for _ in ()).throw(HTTPException(404, "Budget not found"))
+    g = db.get(CategoryGroup, group_id)
+    if not g or g.budget_id != budget_id:
+        raise HTTPException(404, "Category group not found")
+    db.delete(g)
+    db.commit()
+    return
+
+
 @router.post("/budgets/{budget_id}/categories", response_model=dict)
 def create_category(budget_id: UUID, payload: CategoryCreate, db: Session = Depends(get_db)):
     _ = db.get(Budget, budget_id) or (_ for _ in ()).throw(HTTPException(404, "Budget not found"))
@@ -59,6 +85,32 @@ def create_category(budget_id: UUID, payload: CategoryCreate, db: Session = Depe
     db.commit()
     db.refresh(c)
     return {"id": str(c.id)}
+
+
+@router.patch("/budgets/{budget_id}/categories/{category_id}", response_model=dict)
+def patch_category(budget_id: UUID, category_id: UUID, payload: CategoryPatch, db: Session = Depends(get_db)):
+    _ = db.get(Budget, budget_id) or (_ for _ in ()).throw(HTTPException(404, "Budget not found"))
+    c = db.get(Category, category_id)
+    if not c or c.budget_id != budget_id:
+        raise HTTPException(404, "Category not found")
+    if payload.name is not None:
+        c.name = payload.name
+    if payload.hidden is not None:
+        c.hidden = payload.hidden
+    db.commit()
+    db.refresh(c)
+    return {"id": str(c.id)}
+
+
+@router.delete("/budgets/{budget_id}/categories/{category_id}", status_code=204)
+def delete_category(budget_id: UUID, category_id: UUID, db: Session = Depends(get_db)):
+    _ = db.get(Budget, budget_id) or (_ for _ in ()).throw(HTTPException(404, "Budget not found"))
+    c = db.get(Category, category_id)
+    if not c or c.budget_id != budget_id:
+        raise HTTPException(404, "Category not found")
+    db.delete(c)
+    db.commit()
+    return
 
 
 @router.get("/budgets/{budget_id}/categories", response_model=CategoriesMonthResponse)
