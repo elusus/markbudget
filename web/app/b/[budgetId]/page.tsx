@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -125,6 +125,60 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
   }, [respB]);
 
   const creditAccounts = accts.filter((a) => a.type === "credit");
+
+  // Ensure a single synthetic "Pre-MarkBudget Debt" section with per-card payment categories exists
+  const ensureOnce = useRef(false);
+  useEffect(() => {
+    const ensure = async () => {
+      if (ensureOnce.current) return;
+      if (!respA || accts.length === 0) return;
+      const cards = creditAccounts;
+      if (cards.length === 0) { ensureOnce.current = true; return; }
+
+      // Find or create group
+      let debtGroup = respA.groups.find((g) => g.name === "Pre-MarkBudget Debt");
+      if (!debtGroup) {
+        const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/category-groups`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Pre-MarkBudget Debt", sort: 0 }),
+        });
+        if (res.ok) {
+          debtGroup = await res.json();
+        } else {
+          // If we can't create, stop trying this session
+          ensureOnce.current = true;
+          return;
+        }
+      }
+
+      // Ensure a credit-payment category (by name) exists for each card
+      let createdAny = false;
+      for (const card of cards) {
+        const existing = respA.categories.find(
+          (c) => c.group_id === (debtGroup as any).id && c.is_credit_payment && c.name === card.name
+        );
+        if (!existing) {
+          const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/categories`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              group_id: (debtGroup as any).id,
+              name: card.name,
+              sort: 0,
+              hidden: false,
+              is_credit_payment: true,
+            }),
+          });
+          if (res.ok) createdAny = true;
+        }
+      }
+      ensureOnce.current = true;
+      if (createdAny) await load();
+    };
+    ensure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respA, accts.length]);
 
   const setMonth = (newYm: string) => {
     setYm(newYm);
@@ -261,14 +315,48 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
               {creditAccounts.length === 0 ? (
                 <tr><td className="py-2 text-gray-400" colSpan={4}>No credit card accounts yet</td></tr>
               ) : (
-                creditAccounts.map((a) => (
-                  <tr key={a.id}>
-                    <td className="pr-3 py-1">{a.name}</td>
-                    <td className="pr-3 py-1 text-right">0.00</td>
-                    <td className="pr-3 py-1 text-right">0.00</td>
-                    <td className="pr-3 py-1 text-right">0.00</td>
-                  </tr>
-                ))
+                creditAccounts.map((a) => {
+                  // Find the payment category by name (temporary mapping)
+                  const payCat = resp.categories.find((c) => c.is_credit_payment && c.name === a.name);
+                  const catId = payCat?.id;
+                  const m = catId ? monthsByCat.get(catId) : undefined;
+                  const assigned = m?.assigned_cents || 0;
+                  // Treat budgeted amount as paying down debt this month
+                  const debtBalance = (a.current_balance_cents || 0) + assigned;
+                  const key = `${labelYm}|ccpay|${catId || a.id}`;
+                  const isEditing = editingKey === key;
+                  const monthIsoStr = `${labelYm}-01`;
+                  return (
+                    <tr key={`cc-${a.id}`}>
+                      <td className="pr-3 py-1">{a.name}</td>
+                      <td className="pr-3 py-1 text-right">
+                        {catId ? (
+                          isEditing ? (
+                            <input
+                              autoFocus
+                              value={editingVal}
+                              onChange={(e) => setEditingVal(e.target.value)}
+                              onBlur={() => onCommitEdit(key, catId!, monthIsoStr, assigned)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") onCommitEdit(key, catId!, monthIsoStr, assigned);
+                                if (e.key === "Escape") setEditingKey(null);
+                              }}
+                              className="w-28 text-right border rounded px-2 py-0.5"
+                            />
+                          ) : (
+                            <button className="w-28 text-right hover:underline" onClick={() => onStartEdit(key, assigned)}>
+                              {fmtMoney(assigned)}
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-gray-400">(creating…)</span>
+                        )}
+                      </td>
+                      <td className="pr-3 py-1 text-right">0.00</td>
+                      <td className={`pr-3 py-1 text-right ${debtBalance < 0 ? "text-red-600" : ""}`}>{fmtMoney(debtBalance)}</td>
+                    </tr>
+                  );
+                })
               )}
 
               {/* Category groups (exclude synthetic Pre-MarkBudget Debt shown above) */}
