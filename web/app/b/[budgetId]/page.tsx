@@ -56,6 +56,8 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
   const [respB, setRespB] = useState<MonthResp | null>(null); // next month
   const [respPrev, setRespPrev] = useState<MonthResp | null>(null); // previous month of current
   const [accts, setAccts] = useState<AccountWithBalance[]>([]);
+  const [paymentsA, setPaymentsA] = useState<Map<string, number>>(new Map());
+  const [paymentsB, setPaymentsB] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -98,6 +100,54 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetId, ym]);
 
+  // Load payment activity per credit card for current (A) and next (B) months
+  useEffect(() => {
+    const run = async () => {
+      const cards = accts.filter((a) => a.type === "credit");
+      if (cards.length === 0) {
+        setPaymentsA(new Map());
+        setPaymentsB(new Map());
+        return;
+      }
+      const startA = `${ym}-01`;
+      const endA = `${nextYm(ym, +1)}-01`;
+      const ymB = nextYm(ym, +1);
+      const startB = `${ymB}-01`;
+      const endB = `${nextYm(ymB, +1)}-01`;
+
+      const fetchSum = async (accountId: string, start: string, end: string) => {
+        try {
+          const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions?account_id=${accountId}&since=${start}`, { cache: "no-store" });
+          if (!res.ok) return 0;
+          const items = await res.json();
+          // Payments onto the credit card show as positive amounts on the credit account
+          let sum = 0;
+          for (const t of items) {
+            const d = t.date as string;
+            if (d >= start && d < end && (t.amount_cents || 0) > 0) sum += t.amount_cents;
+          }
+          return sum;
+        } catch (_) {
+          return 0;
+        }
+      };
+
+      const mapA = new Map<string, number>();
+      const mapB = new Map<string, number>();
+      await Promise.all(cards.map(async (c) => {
+        const [sa, sb] = await Promise.all([
+          fetchSum(c.id, startA, endA),
+          fetchSum(c.id, startB, endB),
+        ]);
+        mapA.set(c.id, sa || 0);
+        mapB.set(c.id, sb || 0);
+      }));
+      setPaymentsA(mapA);
+      setPaymentsB(mapB);
+    };
+    run();
+  }, [accts, ym, budgetId]);
+
   const monthsByCatA = useMemo(() => {
     const map = new Map<string, MonthRow>();
     respA?.months.forEach((m) => map.set(m.category_id, m));
@@ -127,13 +177,11 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
   const creditAccounts = accts.filter((a) => a.type === "credit");
 
   // Ensure a single synthetic "Pre-MarkBudget Debt" section with per-card payment categories exists
-  const ensureOnce = useRef(false);
   useEffect(() => {
     const ensure = async () => {
-      if (ensureOnce.current) return;
       if (!respA || accts.length === 0) return;
       const cards = creditAccounts;
-      if (cards.length === 0) { ensureOnce.current = true; return; }
+      if (cards.length === 0) return;
 
       // Find or create group
       let debtGroup = respA.groups.find((g) => g.name === "Pre-MarkBudget Debt");
@@ -146,8 +194,6 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
         if (res.ok) {
           debtGroup = await res.json();
         } else {
-          // If we can't create, stop trying this session
-          ensureOnce.current = true;
           return;
         }
       }
@@ -173,7 +219,6 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
           if (res.ok) createdAny = true;
         }
       }
-      ensureOnce.current = true;
       if (createdAny) await load();
     };
     ensure();
@@ -321,8 +366,9 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                   const catId = payCat?.id;
                   const m = catId ? monthsByCat.get(catId) : undefined;
                   const assigned = m?.assigned_cents || 0;
-                  // Treat budgeted amount as paying down debt this month
-                  const debtBalance = (a.current_balance_cents || 0) + assigned;
+                  const payments = (labelYm === ym ? paymentsA : paymentsB).get(a.id) || 0;
+                  // Treat budgeted + actual payments as progress against debt
+                  const debtBalance = (a.current_balance_cents || 0) + assigned - payments;
                   const key = `${labelYm}|ccpay|${catId || a.id}`;
                   const isEditing = editingKey === key;
                   const monthIsoStr = `${labelYm}-01`;
@@ -352,7 +398,7 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                           <span className="text-gray-400">(creating…)</span>
                         )}
                       </td>
-                      <td className="pr-3 py-1 text-right">0.00</td>
+                      <td className="pr-3 py-1 text-right">{fmtMoney(payments)}</td>
                       <td className={`pr-3 py-1 text-right ${debtBalance < 0 ? "text-red-600" : ""}`}>{fmtMoney(debtBalance)}</td>
                     </tr>
                   );
