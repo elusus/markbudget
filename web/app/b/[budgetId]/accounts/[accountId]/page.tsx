@@ -249,14 +249,7 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
     await load();
   };
 
-  // Running balance map
-  const runningBalance = useMemo(() => {
-    const sorted = [...txs].sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-    let bal = 0;
-    const map: Record<string, number> = {};
-    for (const t of sorted) { bal += t.amount_cents; map[t.id] = bal; }
-    return map;
-  }, [txs]);
+  // (removed running balance map)
 
   return (
     <div>
@@ -295,7 +288,6 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                 <th className="px-2 py-1 text-left">Memo</th>
                 <th className="px-2 py-1 text-right">Outflow</th>
                 <th className="px-2 py-1 text-right">Inflow</th>
-                <th className="px-2 py-1 text-right">Balance</th>
                 <th className="w-8 text-center">C</th>
               </tr>
             </thead>
@@ -307,7 +299,6 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                 const catLabel = t.subtransactions.length > 1 ? "Split" : (t.subtransactions[0]?.category_id ? catName(t.subtransactions[0]?.category_id as string) : isTransfer ? `Transfer: ${acctName(t.transfer_account_id as string)}` : "");
                 const out = t.amount_cents < 0 ? fmtMoney(Math.abs(t.amount_cents)) : "";
                 const infl = t.amount_cents > 0 ? fmtMoney(t.amount_cents) : "";
-                const bal = fmtMoney(runningBalance[t.id] || 0);
                 const isEditing = editingId === t.id;
                 if (isEditing) {
                   return (
@@ -338,7 +329,6 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                       <td className="px-2 py-1"><input className="border rounded px-1 w-full" value={editFields.memo} onChange={(e)=>setEditFields({...editFields, memo:e.target.value})} /></td>
                       <td className="px-2 py-1 text-right"><input className="border rounded px-1 text-right w-24" value={editFields.outflow} onChange={(e)=>setEditFields({...editFields, outflow:e.target.value})} /></td>
                       <td className="px-2 py-1 text-right"><input className="border rounded px-1 text-right w-24" value={editFields.inflow} onChange={(e)=>setEditFields({...editFields, inflow:e.target.value})} /></td>
-                      <td className="px-2 py-1 text-right tabular-nums">{bal}</td>
                       <td className="text-center whitespace-nowrap">
                         <button className="px-2 py-0.5 rounded border mr-1" onClick={()=>cancelEdit()}>Cancel</button>
                         <button className="px-2 py-0.5 rounded bg-blue-600 text-white" onClick={()=>saveEdit(t)}>Save</button>
@@ -358,7 +348,6 @@ export default function RegisterPage({ params }: { params: { budgetId: string; a
                     <td className="px-2 py-1">{t.memo || ""}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{out}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{infl}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{bal}</td>
                     <td className="text-center">{isCleared ? <span className="inline-block px-1 rounded bg-green-100 text-green-700 text-xs">C</span> : ''}</td>
                   </tr>
                 );

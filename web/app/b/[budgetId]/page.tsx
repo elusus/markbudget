@@ -139,23 +139,22 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                   <th className="pr-3 py-1">Categories</th>
                   <th className="pr-3 py-1 text-right">Budgeted</th>
                   <th className="pr-3 py-1 text-right">Outflows</th>
-                  <th className="py-1 text-right">Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {/* Pre-MarkBudget Debt group */}
                 <tr>
-                  <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">Pre‑MarkBudget Debt</td>
+                  <td colSpan={3} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">Pre‑MarkBudget Debt</td>
                 </tr>
                 {creditAccounts.length === 0 ? (
-                  <tr><td className="py-2 text-gray-400" colSpan={4}>No credit card accounts yet</td></tr>
+                  <tr><td className="py-2 text-gray-400" colSpan={3}>No credit card accounts yet</td></tr>
                 ) : (
                   creditAccounts.map((a) => (
                     <tr key={a.id}>
                       <td className="pr-3 py-1">{a.name}</td>
                       <td className="pr-3 py-1 text-right">0.00</td>
                       <td className="pr-3 py-1 text-right">0.00</td>
-                      <td className={`py-1 text-right ${a.current_balance_cents < 0 ? "text-red-600" : ""}`}>{fmtMoney(a.current_balance_cents)}</td>
+                      
                     </tr>
                   ))
                 )}
@@ -164,7 +163,7 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                 {resp.groups.map((g) => (
                   <>
                     <tr key={g.id + "-hdr"}>
-                      <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">{g.name}</td>
+                      <td colSpan={3} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">{g.name}</td>
                     </tr>
                     {resp.categories
                       .filter((c) => c.group_id === g.id)
@@ -178,7 +177,7 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                             <td className="pr-3 py-1">{c.name}</td>
                             <td className="pr-3 py-1 text-right">{fmtMoney(assigned)}</td>
                             <td className="pr-3 py-1 text-right">{fmtMoney(activity)}</td>
-                            <td className={`py-1 text-right ${available < 0 ? "text-red-600" : ""}`}>{fmtMoney(available)}</td>
+                            
                           </tr>
                         );
                       })}
