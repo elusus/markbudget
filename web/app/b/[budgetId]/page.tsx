@@ -74,6 +74,25 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
   const [editGroupName, setEditGroupName] = useState("");
   const [editCat, setEditCat] = useState<Category | null>(null);
   const [editCatName, setEditCatName] = useState("");
+  const [hiddenOpen, setHiddenOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const v = window.localStorage.getItem(`mb:hiddenCats:${budgetId}`);
+      if (v === '0' || v === 'false') return false;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`mb:hiddenCats:${budgetId}`, hiddenOpen ? '1' : '0');
+    }
+  }, [hiddenOpen, budgetId]);
+
+  const groupsById = useMemo(() => {
+    const map = new Map<string, Group>();
+    respA?.groups.forEach((g) => map.set(g.id, g));
+    return map;
+  }, [respA]);
 
   const load = async () => {
     setLoading(true);
@@ -369,6 +388,8 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                 creditAccounts.map((a) => {
                   // Find the payment category by name (temporary mapping)
                   const payCat = resp.categories.find((c) => c.is_credit_payment && c.name === a.name);
+                  // If the payment category is hidden, do not render here (it will appear under Hidden Categories)
+                  if (payCat && payCat.hidden) return null;
                   const catId = payCat?.id;
                   const m = catId ? monthsByCat.get(catId) : undefined;
                   const assigned = m?.assigned_cents || 0;
@@ -380,7 +401,7 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                   const monthIsoStr = `${labelYm}-01`;
                   return (
                     <tr key={`cc-${a.id}`}>
-                      <td className="pr-3 py-1">
+                      <td className="pr-3 py-1 pl-6">
                         <button className="hover:underline" onClick={() => { if (catId) { setEditCat({ ...(payCat as any) }); setEditCatName(payCat!.name); } }} title="Edit payment category">
                           {a.name}
                         </button>
@@ -439,7 +460,7 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                       const isEditing = editingKey === key;
                       return (
                         <tr key={c.id}>
-                          <td className="pr-3 py-1">
+                          <td className="pr-3 py-1 pl-6">
                             <button className="hover:underline" title="Edit category" onClick={() => { setEditCat(c); setEditCatName(c.name); }}>
                               {c.name}
                             </button>
@@ -470,6 +491,58 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                     })}
                 </>
               ))}
+
+              {/* Hidden Categories management */}
+              {(() => {
+                const hiddenCats = resp.categories.filter((c) => c.hidden);
+                if (hiddenCats.length === 0) return null;
+                // Group hidden by original group name
+                const byGroup = new Map<string, Category[]>();
+                hiddenCats.forEach((c) => {
+                  const g = groupsById.get(c.group_id) || { id: c.group_id, name: "(Ungrouped)", sort: 0 } as Group;
+                  const key = g.name;
+                  const arr = byGroup.get(key) || [];
+                  arr.push(c);
+                  byGroup.set(key, arr);
+                });
+                return (
+                  <>
+                    <tr>
+                      <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">
+                        <div className="flex items-center justify-between">
+                          <span>Hidden Categories ({hiddenCats.length})</span>
+                          <button className="text-xs underline" onClick={() => setHiddenOpen((v) => !v)}>{hiddenOpen ? 'Collapse' : 'Expand'}</button>
+                        </div>
+                      </td>
+                    </tr>
+                    {hiddenOpen && (
+                      <>
+                        {[...byGroup.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([gname, cats]) => (
+                          <>
+                            <tr key={`hidden-${gname}`}>
+                              <td colSpan={4} className="text-xs text-gray-500 px-2 pt-2">{gname}</td>
+                            </tr>
+                            {cats.sort((a,b)=>a.name.localeCompare(b.name)).map((c) => (
+                              <tr key={`hidden-cat-${c.id}`} className="text-gray-500">
+                                <td className="pr-3 py-1 pl-6">
+                                  <span className="mr-3">{c.name}</span>
+                                  <button className="text-blue-700 underline" onClick={async ()=>{
+                                    await fetch(`${API_URL}/api/v1/budgets/${budgetId}/categories/${c.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ hidden: false }) });
+                                    await load();
+                                  }}>Unhide</button>
+                                </td>
+                                <td className="pr-3 py-1 text-right">-</td>
+                                <td className="pr-3 py-1 text-right">-</td>
+                                <td className="pr-3 py-1 text-right">-</td>
+                              </tr>
+                            ))}
+                          </>
+                        ))}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </tbody>
           </table>
         </div>
