@@ -69,6 +69,12 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editingVal, setEditingVal] = useState<string>("");
 
+  // Edit modals for groups/categories
+  const [editGroup, setEditGroup] = useState<Group | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editCat, setEditCat] = useState<Category | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -374,7 +380,11 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                   const monthIsoStr = `${labelYm}-01`;
                   return (
                     <tr key={`cc-${a.id}`}>
-                      <td className="pr-3 py-1">{a.name}</td>
+                      <td className="pr-3 py-1">
+                        <button className="hover:underline" onClick={() => { if (catId) { setEditCat({ ...(payCat as any) }); setEditCatName(payCat!.name); } }} title="Edit payment category">
+                          {a.name}
+                        </button>
+                      </td>
                       <td className="pr-3 py-1 text-right">
                         {catId ? (
                           isEditing ? (
@@ -411,13 +421,15 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                   <tr key={g.id + "-hdr"}>
                     <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">
                       <div className="flex items-center justify-between">
-                        <span>{g.name}</span>
+                        <button className="hover:underline" title="Edit master category" onClick={() => { setEditGroup(g); setEditGroupName(g.name); }}>
+                          {g.name}
+                        </button>
                         <button title="Add sub-category" className="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 border" onClick={() => createCategory(g.id)}>+</button>
                       </div>
                     </td>
                   </tr>
                   {resp.categories
-                    .filter((c) => c.group_id === g.id)
+                    .filter((c) => c.group_id === g.id && !c.hidden)
                     .map((c) => {
                       const m = monthsByCat.get(c.id);
                       const assigned = m?.assigned_cents || 0;
@@ -427,7 +439,11 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                       const isEditing = editingKey === key;
                       return (
                         <tr key={c.id}>
-                          <td className="pr-3 py-1">{c.name}</td>
+                          <td className="pr-3 py-1">
+                            <button className="hover:underline" title="Edit category" onClick={() => { setEditCat(c); setEditCatName(c.name); }}>
+                              {c.name}
+                            </button>
+                          </td>
                           <td className="pr-3 py-1 text-right">
                             {isEditing ? (
                               <input
@@ -491,6 +507,78 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
         <div className="flex gap-6">
           {renderTableFor(ym, respA, respPrev, monthsByCatA)}
           {renderTableFor(nextMonth, respB, respA, monthsByCatB)}
+        </div>
+      )}
+
+      {/* Edit Group Modal */}
+      {editGroup && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>{ if(e.target===e.currentTarget) setEditGroup(null); }}>
+          <div className="bg-white rounded-md shadow-2xl w-full max-w-md">
+            <div className="px-4 py-3 bg-gray-100 border-b text-lg font-semibold">Edit master category</div>
+            <div className="p-4 space-y-3">
+              <input className="w-full border rounded px-3 py-2" value={editGroupName} onChange={(e)=>setEditGroupName(e.target.value)} />
+              <div className="flex justify-between items-center pt-3 border-t">
+                <button className="text-red-600" onClick={async ()=>{
+                  if(!confirm('Delete this master category? All sub-categories will also be deleted.')) return;
+                  await fetch(`${API_URL}/api/v1/budgets/${budgetId}/category-groups/${editGroup.id}`, { method: 'DELETE' });
+                  setEditGroup(null);
+                  await load();
+                }}>Delete this group</button>
+                <div className="ml-auto flex gap-2">
+                  <button className="px-3 py-2 rounded border" onClick={()=>setEditGroup(null)}>Cancel</button>
+                  <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={async ()=>{
+                    await fetch(`${API_URL}/api/v1/budgets/${budgetId}/category-groups/${editGroup.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: editGroupName }) });
+                    setEditGroup(null);
+                    await load();
+                  }}>Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Category Modal */}
+      {editCat && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>{ if(e.target===e.currentTarget) setEditCat(null); }}>
+          <div className="bg-white rounded-md shadow-2xl w-full max-w-md">
+            <div className="px-4 py-3 bg-gray-100 border-b text-lg font-semibold">Edit category</div>
+            <div className="p-4 space-y-3">
+              {editCat.is_credit_payment ? (
+                <>
+                  <input className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-500" value={editCatName} disabled />
+                  <div className="text-sm text-gray-600">Payment categories under Pre‑MarkBudget Debt cannot be renamed.</div>
+                </>
+              ) : (
+                <input className="w-full border rounded px-3 py-2" value={editCatName} onChange={(e)=>setEditCatName(e.target.value)} />
+              )}
+              <div>
+                <button className="text-blue-700 underline" onClick={async ()=>{
+                  await fetch(`${API_URL}/api/v1/budgets/${budgetId}/categories/${editCat.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ hidden: true }) });
+                  setEditCat(null);
+                  await load();
+                }}>Hide this category</button>
+              </div>
+              <div>
+                <button className="text-red-600" onClick={async ()=>{
+                  if(!confirm('Delete this category?')) return;
+                  await fetch(`${API_URL}/api/v1/budgets/${budgetId}/categories/${editCat.id}`, { method:'DELETE' });
+                  setEditCat(null);
+                  await load();
+                }}>Delete this category</button>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button className="px-3 py-2 rounded border" onClick={()=>setEditCat(null)}>Cancel</button>
+                <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={async ()=>{
+                  if (!editCat.is_credit_payment) {
+                    await fetch(`${API_URL}/api/v1/budgets/${budgetId}/categories/${editCat.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: editCatName }) });
+                  }
+                  setEditCat(null);
+                  await load();
+                }}>Done</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>
