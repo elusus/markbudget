@@ -27,6 +27,25 @@ function fmtMoney(cents: number) {
   return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Local date helpers to avoid UTC shift
+function localDateStr(d: Date = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function monthNameFromDateStr(s: string, offset = 0) {
+  const [y, m, day] = s.split("-").map((x) => parseInt(x, 10));
+  const dt = new Date(y || 1970, (m || 1) - 1, day || 1);
+  dt.setMonth(dt.getMonth() + offset);
+  return dt.toLocaleString(undefined, { month: "long" });
+}
+function fmtLocalDate(s: string) {
+  const [y, m, d] = s.split("-").map((x) => parseInt(x, 10));
+  const dt = new Date(y || 1970, (m || 1) - 1, d || 1);
+  return dt.toLocaleDateString();
+}
+
 export default function AllAccountsPage({ params }: { params: { budgetId: string } }) {
   const { budgetId } = params;
 
@@ -53,7 +72,7 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
 
   // Add form state
   const [showAdd, setShowAdd] = useState(false);
-  const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateStr, setDateStr] = useState(() => localDateStr());
   const [addAccountId, setAddAccountId] = useState<string>("");
   const [payeeName, setPayeeName] = useState("");
   const [outflow, setOutflow] = useState<string>("");
@@ -247,9 +266,10 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
     }
     // Income targeting
     if (categoryId && categoryId.startsWith('income:')) {
-      const d = new Date(dateStr);
-      if (categoryId.endsWith('next')) d.setMonth(d.getMonth()+1);
-      body.income_for_month = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+      const [y, m, day] = dateStr.split('-').map((x) => parseInt(x, 10));
+      const d = new Date(y || 1970, (m || 1) - 1, day || 1);
+      if (categoryId.endsWith('next')) d.setMonth(d.getMonth() + 1);
+      body.income_for_month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     }
     const res = await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions`, {
       method: "POST",
@@ -309,7 +329,20 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
       const infl = parseFloat(editFields.inflow || "0");
       const amount_cents = Math.round(infl * 100) - Math.round(out * 100);
       if (amount_cents !== t.amount_cents) body.amount_cents = amount_cents;
-      if (editFields.category_id !== undefined) body.category_id = editFields.category_id || null;
+      if (editFields.category_id !== undefined) {
+        const v = String(editFields.category_id || "");
+        if (v.startsWith('income:')) {
+          const s = String(editFields.date || t.date);
+          const [yy, mm, dd] = s.split('-').map((x)=>parseInt(x,10));
+          const d = new Date(yy || 1970, (mm || 1)-1, dd || 1);
+          if (v.endsWith('next')) d.setMonth(d.getMonth()+1);
+          body.income_for_month = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+          body.category_id = null;
+        } else {
+          body.category_id = editFields.category_id || null;
+          if (editFields.category_id) body.income_for_month = null;
+        }
+      }
     }
     await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions/${t.id}`, {
       method: "PATCH",
@@ -393,6 +426,10 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
                       <td className="px-2 py-1">
                         <select className="border rounded px-1" value={editFields.category_id} onChange={(e)=>setEditFields({...editFields, category_id:e.target.value})} disabled={isTransfer}>
                           <option value="">(none)</option>
+                          <optgroup label="Income">
+                            <option value={`income:current`}>{`Income for ${monthNameFromDateStr(editFields.date || t.date, 0)}`}</option>
+                            <option value={`income:next`}>{`Income for ${monthNameFromDateStr(editFields.date || t.date, 1)}`}</option>
+                          </optgroup>
                           {groups.map((g) => (
                             <optgroup key={g.id} label={g.name}>
                               {cats.filter(c=>c.group_id===g.id).map(c=> (
@@ -419,7 +456,7 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
                       <button className={`w-4 h-4 rounded-full ${isCleared ? 'bg-green-500' : 'bg-gray-300'}`} onClick={() => toggleCleared(t)} title={isCleared ? 'Cleared' : 'Uncleared'} />
                     </td>
                     <td className="px-2 py-1">{acctName(t.account_id)}</td>
-                    <td className="px-2 py-1">{new Date(t.date).toLocaleDateString()}</td>
+                    <td className="px-2 py-1">{fmtLocalDate(t.date)}</td>
                     <td className="px-2 py-1">{isTransfer ? `Transfer: ${acctName(t.transfer_account_id as string)}` : (t.payee_name || '')}</td>
                     <td className="px-2 py-1">{catLabel}</td>
                     <td className="px-2 py-1">{t.memo || ""}</td>
@@ -537,8 +574,8 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
                 <option value="">(none)</option>
                 {/* Income shortcuts */}
                 <optgroup label="Income">
-                  <option value={`income:current`}>{`Income for ${new Date(dateStr).toLocaleString(undefined,{month:'long'})}`}</option>
-                  <option value={`income:next`}>{`Income for ${(() => { const d=new Date(dateStr); d.setMonth(d.getMonth()+1); return d.toLocaleString(undefined,{month:'long'}); })()}`}</option>
+                  <option value={`income:current`}>{`Income for ${monthNameFromDateStr(dateStr, 0)}`}</option>
+                  <option value={`income:next`}>{`Income for ${monthNameFromDateStr(dateStr, 1)}`}</option>
                 </optgroup>
                 {groups.map((g) => (
                   <optgroup key={g.id} label={g.name}>

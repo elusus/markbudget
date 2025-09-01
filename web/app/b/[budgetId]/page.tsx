@@ -271,8 +271,8 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                 ))
               )}
 
-              {/* Category groups */}
-              {resp.groups.map((g) => (
+              {/* Category groups (exclude synthetic Pre-MarkBudget Debt shown above) */}
+              {resp.groups.filter(g => g.name !== 'Pre-MarkBudget Debt').map((g) => (
                 <>
                   <tr key={g.id + "-hdr"}>
                     <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">
