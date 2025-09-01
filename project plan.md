@@ -1,4 +1,4 @@
-# YNAB-style Budgeting App — Spec & Build Guide
+# MarkBudget-style Budgeting App — Spec & Build Guide
 
 > A clean-room, feature-parity clone **in spirit** (no copied assets or wording) optimized for vibe-coding: small steps, fast feedback, strong invariants.
 
@@ -137,7 +137,7 @@ Invariants
 
     Money is integer cents only. No floats. Ever.
 
-6) Budget Math (YNAB-style rules)
+6) Budget Math (MarkBudget-style rules)
 
 Per category × month:
 
@@ -406,6 +406,6 @@ date, payee, memo, amount, category, account
 Deduplication key: import_id = f"{account_id}:{date}:{amount_cents}:{payee}:{memo}"
 17) License & Branding
 
-    Use your own names, icons, copy. Do not reuse YNAB branding or proprietary assets.
+    Use your own names, icons, copy. Do not reuse MarkBudget branding or proprietary assets.
 
     This is a functional clone — not a visual or trademark clone.

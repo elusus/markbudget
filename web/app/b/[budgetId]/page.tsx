@@ -143,9 +143,9 @@ export default function BudgetPage({ params }: { params: { budgetId: string } })
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {/* Pre-YNAB Debt group */}
+                {/* Pre-MarkBudget Debt group */}
                 <tr>
-                  <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">Pre‑YNAB Debt</td>
+                  <td colSpan={4} className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wide px-2 py-1">Pre‑MarkBudget Debt</td>
                 </tr>
                 {creditAccounts.length === 0 ? (
                   <tr><td className="py-2 text-gray-400" colSpan={4}>No credit card accounts yet</td></tr>

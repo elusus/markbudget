@@ -1,6 +1,6 @@
 # MarkBudget
 
-YNAB-style budgeting app (clean-room clone in spirit). Monorepo with Next.js web and FastAPI API.
+MarkBudget-style budgeting app (clean-room clone in spirit). Monorepo with Next.js web and FastAPI API.
 
 ## Layout
 - `web/` Next.js 14 (App Router)
