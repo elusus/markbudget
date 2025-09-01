@@ -279,7 +279,7 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<any>({});
   const startEdit = (t: Tx) => {
-    if (t.transfer_account_id || t.subtransactions.length > 1) return;
+    if (t.subtransactions.length > 1) return;
     setEditingId(t.id);
     const out = t.amount_cents < 0 ? (Math.abs(t.amount_cents) / 100).toFixed(2) : "";
     const infl = t.amount_cents > 0 ? (t.amount_cents / 100).toFixed(2) : "";
@@ -297,12 +297,20 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
     setEditFields({});
   };
   const saveEdit = async (t: Tx) => {
-    const body: any = { memo: editFields.memo, date: editFields.date, payee_name: editFields.payee_name };
-    const out = parseFloat(editFields.outflow || "0");
-    const infl = parseFloat(editFields.inflow || "0");
-    const amount_cents = Math.round(infl * 100) - Math.round(out * 100);
-    if (amount_cents !== t.amount_cents) body.amount_cents = amount_cents;
-    if (editFields.category_id !== undefined) body.category_id = editFields.category_id || null;
+    const isTransfer = !!t.transfer_account_id;
+    const body: any = {};
+    if (isTransfer) {
+      body.memo = editFields.memo;
+    } else {
+      body.memo = editFields.memo;
+      body.date = editFields.date;
+      body.payee_name = editFields.payee_name;
+      const out = parseFloat(editFields.outflow || "0");
+      const infl = parseFloat(editFields.inflow || "0");
+      const amount_cents = Math.round(infl * 100) - Math.round(out * 100);
+      if (amount_cents !== t.amount_cents) body.amount_cents = amount_cents;
+      if (editFields.category_id !== undefined) body.category_id = editFields.category_id || null;
+    }
     await fetch(`${API_URL}/api/v1/budgets/${budgetId}/transactions/${t.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -373,9 +381,9 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
                       <td className="text-center"><input type="checkbox" checked={isSel} onChange={() => toggleSelect(t.id)} /></td>
                       <td className="text-center"><button className={`w-4 h-4 rounded-full ${isCleared ? 'bg-green-500' : 'bg-gray-300'}`} onClick={() => toggleCleared(t)} title={isCleared ? 'Cleared' : 'Uncleared'} /></td>
                       <td className="px-2 py-1">{acctName(t.account_id)}</td>
-                      <td className="px-2 py-1"><input type="date" className="border rounded px-1" value={editFields.date} onChange={(e)=>setEditFields({...editFields, date:e.target.value})} /></td>
+                      <td className="px-2 py-1"><input type="date" className="border rounded px-1" value={editFields.date} onChange={(e)=>setEditFields({...editFields, date:e.target.value})} disabled={isTransfer} /></td>
                       <td className="px-2 py-1">
-                        <input ref={payeeInputRef} list="payees-all" className="border rounded px-1" value={editFields.payee_name} onChange={(e)=>setEditFields({...editFields, payee_name:e.target.value})} onFocus={() => setPayeeOpen(true)} onBlur={() => setTimeout(()=>setPayeeOpen(false),150)} />
+                        <input ref={payeeInputRef} list="payees-all" className="border rounded px-1" value={isTransfer ? (`Transfer: ${acctName(t.transfer_account_id as string)}`) : editFields.payee_name} onChange={(e)=>setEditFields({...editFields, payee_name:e.target.value})} onFocus={() => setPayeeOpen(true)} onBlur={() => setTimeout(()=>setPayeeOpen(false),150)} disabled={isTransfer} />
                         <datalist id="payees-all">
                           {Array.from(new Set([...(payeeNames||[]), ...payees.map(p=>p.name)])).map((n)=> (
                             <option key={n} value={n} />
@@ -383,7 +391,7 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
                         </datalist>
                       </td>
                       <td className="px-2 py-1">
-                        <select className="border rounded px-1" value={editFields.category_id} onChange={(e)=>setEditFields({...editFields, category_id:e.target.value})}>
+                        <select className="border rounded px-1" value={editFields.category_id} onChange={(e)=>setEditFields({...editFields, category_id:e.target.value})} disabled={isTransfer}>
                           <option value="">(none)</option>
                           {groups.map((g) => (
                             <optgroup key={g.id} label={g.name}>
@@ -395,8 +403,8 @@ export default function AllAccountsPage({ params }: { params: { budgetId: string
                         </select>
                       </td>
                       <td className="px-2 py-1"><input className="border rounded px-1 w-full" value={editFields.memo} onChange={(e)=>setEditFields({...editFields, memo:e.target.value})} /></td>
-                      <td className="px-2 py-1 text-right"><input className="border rounded px-1 text-right w-24" value={editFields.outflow} onChange={(e)=>setEditFields({...editFields, outflow:e.target.value})} /></td>
-                      <td className="px-2 py-1 text-right"><input className="border rounded px-1 text-right w-24" value={editFields.inflow} onChange={(e)=>setEditFields({...editFields, inflow:e.target.value})} /></td>
+                      <td className="px-2 py-1 text-right"><input className="border rounded px-1 text-right w-24" value={editFields.outflow} onChange={(e)=>setEditFields({...editFields, outflow:e.target.value})} disabled={isTransfer} /></td>
+                      <td className="px-2 py-1 text-right"><input className="border rounded px-1 text-right w-24" value={editFields.inflow} onChange={(e)=>setEditFields({...editFields, inflow:e.target.value})} disabled={isTransfer} /></td>
                       <td className="text-center whitespace-nowrap">
                         <button className="px-2 py-0.5 rounded border mr-1" onClick={()=>cancelEdit()}>Cancel</button>
                         <button className="px-2 py-0.5 rounded bg-blue-600 text-white" onClick={()=>saveEdit(t)}>Save</button>
